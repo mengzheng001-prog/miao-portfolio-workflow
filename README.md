@@ -45,27 +45,28 @@ This skill activates when you ask Claude to do any of:
 
 Claude will read SKILL.md and walk through the 5-step workflow.
 
-## Project setup assumed
+## Generalizable to different project setups
 
-This skill assumes your project layout looks like:
+**v0.2 update**: SKILL.md now starts with a **Step 0 — Project Discovery** phase that auto-detects:
 
-```
-<your-project>/
-└── personal-main/
-    ├── index.html
-    ├── archiai.html / tourism.html / ...  (project sub-pages)
-    └── assets/
-        ├── style.css
-        └── main.js
-```
+- Source directory location (`personal-main/` / `src/` / `site/` / `public/` / ...)
+- Deploy mode (same repo vs separate deploy repo)
+- CSS class naming (`bento-card` / `card` / Tailwind utilities / ...)
+- Section IDs (`#projects` / `#experience` / your own naming)
+- Network proxy needs (mainland China / WSL / VPN setups)
+- DNS registrar (Aliyun / Tencent DNSPod / Cloudflare / Namecheap / GoDaddy)
 
-And your deployment setup:
+So even if your project uses a different layout / CSS framework / DNS provider, the skill will adapt. The HTML snippets in `examples/` are reference points — Claude reads them, then applies your project's actual conventions.
 
-- **GitHub deploy repo** (separate from source): Vercel "Import Git Repository" watches this
-- **Vercel project**: auto-builds on push to main
-- **Custom domain** (optional): bound via Vercel + your DNS provider
+Tested compatibility:
 
-If your layout is different, edit the placeholders in `SKILL.md` (search for `<PROJECT_ROOT>` / `<DEPLOY_REPO>` / `<YOUR_DOMAIN>`).
+| Setup | Status |
+|---|---|
+| AI Studio / Vercel template (vanilla HTML) | ✅ Tested |
+| Vite + vanilla HTML | ✅ Compatible |
+| Tailwind utility-class projects | 🟡 Templates need light adapt |
+| Next.js / SvelteKit | 🟡 Workflow applies, HTML templates don't |
+| Webflow / Framer export | 🟡 Workflow applies, no HTML edits |
 
 ## What's in this repo
 
