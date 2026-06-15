@@ -1,0 +1,36 @@
+<!--
+  Personal project card template
+  Copy this <a> block and insert inside <div class="other-grid"> of #personal-projects section.
+
+  What to customize:
+  1. href              — GitHub repo URL
+  2. .other-card-tag    — short stack tag (3-5 words)
+  3. <h3>               — project name (keep the github-link arrow span)
+  4. <p class="desc">   — 80-130 char description: what it does + how
+  5. kv-row             — "技术栈" and "解决痛点" rows; can add more
+-->
+
+<a class="bento-card other-card personal-card"
+   href="https://github.com/<USERNAME>/<REPO_NAME>"
+   target="_blank" rel="noopener">
+
+  <div class="other-card-tag">React + TS · Electron · AI 解析</div>
+
+  <h3>项目名称<span class="github-link" aria-hidden="true">↗</span></h3>
+
+  <p class="desc">
+    项目一句话定位 + 核心做法。控制在 80-130 字，让访问者快速判断这是干嘛的。
+    技术栈、用了什么 AI 能力（DeepSeek / Doubao / Claude）、解决什么人的什么场景。
+  </p>
+
+  <div class="other-kv">
+    <div class="kv-row">
+      <span class="k">技术栈</span>
+      <span class="v">React 19 · TS · Vite · Express · Electron · DeepSeek · Recharts</span>
+    </div>
+    <div class="kv-row">
+      <span class="k">解决痛点</span>
+      <span class="v">谁在什么场景下遇到什么具体问题，原本怎么处理是麻烦的</span>
+    </div>
+  </div>
+</a>
