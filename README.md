@@ -1,19 +1,23 @@
 # miao-portfolio-workflow
 
-A Claude skill for maintaining a personal portfolio website built with AI + deployed on Vercel.
+**v0.3 — full lifecycle Claude skill**: from a resume PDF to a deployed-and-maintained personal portfolio site on Vercel.
 
-**Target user**: PMs / designers / job seekers who built a static HTML portfolio with AI (Claude Code / Cursor / Gemini), deployed on Vercel, and want a reusable workflow for ongoing edits + deploys.
+**Target user**: 求职者 / 自由职业者 / 想做个人作品集的人。即使你不会前端，给 Claude 一份简历 PDF，它能帮你一路做到「线上能访问 + 长期维护」。
 
 ## What this skill does
 
-Captures the full edit → sync → push → verify → deploy workflow:
+6 phases covering the full lifecycle:
 
-- 🎨 **Edit source HTML/CSS/JS** in your local `personal-main/` directory
-- 🔁 **Sync to a separate Vercel deploy repo** (the common "source vs deploy repo split" pattern)
-- 🌐 **Commit + push via proxy** (WSL / mainland China network reliability)
-- ✅ **Verify auto-build** via curl + grep
-- 🧩 **Task templates** for 5 common changes: add project card, update copy, reorder sections, alternate dark/light backgrounds, add horizontal scroll nav buttons
-- 🔗 **Bind custom domain** via Vercel REST API + DNS config (works for Aliyun, Tencent DNSPod, Cloudflare etc.)
+| Phase | Goal |
+|---|---|
+| **1. PDF 解析** | Parse resume PDF → structured `resume.json`（按 [resume.schema.json](https://github.com/mengzheng001-prog/miao-portfolio-templates/blob/main/_schema/resume.schema.json) 契约） |
+| **2. 选模板** | Default: pull from [miao-portfolio-templates](https://github.com/mengzheng001-prog/miao-portfolio-templates). Custom external templates also supported |
+| **3. 填充模板** | Replace `{{占位符}}` + 重写示范 section → 完整 portfolio/ |
+| **4. 首次部署** | `gh repo create` + Vercel Import → live at `xxx.vercel.app` |
+| **5. 长期维护** | Edit source → sync → commit + push via proxy → verify auto-build |
+| **6. 域名绑定** | Vercel REST API + 多家 DNS 注册商（阿里云 / 腾讯云 / Cloudflare / Namecheap / GoDaddy / Spaceship） |
+
+Each phase is independently entered—if you already have a portfolio repo and just want to add a project card, skill goes directly to Phase 5.
 
 ## Install
 

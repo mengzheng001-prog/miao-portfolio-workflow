@@ -1,33 +1,240 @@
 ---
 name: miao-portfolio-workflow
 description: |
-  维护一个用 AI 搭出来 + 部署在 Vercel（或类似平台）的静态作品集 / 简历主页的完整工作流。
-  当用户要做这些事情时立刻调用：改个人主页 / 作品集页文案、加项目卡片（GitHub 链 / 桌面 app 链）、
-  调整 section 顺序、调整 section 深浅背景配色交替、给横排卡片加左右滑动按钮、绑定新域名、
-  把本地源文件同步到 Vercel 部署仓库 + push + 验证。
-  即使用户没说"作品集 / 个人主页 / Vercel"等具体字眼，但提到"在我的简历网页 / 主页上加/改 XXX"
-  也要主动用这个 skill。skill 本身设计为通用的——首次跑时会先探查项目结构、CSS 约定、网络环境，
-  再 adapt 到具体项目。
+  个人作品集 / 简历主页的全生命周期 skill：从一份简历 PDF 开始，生成 HTML 主页 → 推 GitHub → 部署 Vercel → 绑定域名 → 长期维护增删项目。
+  当用户要做以下任何一件事时立刻调用：
+  （1）给一份简历 PDF 想做一个主页 / 求职作品集；
+  （2）已有主页，想加项目卡片 / 改文案 / 调 section 顺序 / 加横滑按钮 / 调深浅配色；
+  （3）想把一个静态主页部署到 Vercel；
+  （4）想给已有 Vercel 项目绑自定义域名（含中国大陆 DNS）。
+  即使用户没说"作品集 / 个人主页 / Vercel"等具体字眼，但提到"做个主页 / 简历网站 / 改主页 XXX"也要主动用这个 skill。
+  skill 设计为通用的——首次跑时会先探查项目（或选模板），再 adapt 到具体场景。
 ---
 
-# Maintaining a Vercel-deployed personal portfolio site
+# Personal portfolio site — from resume PDF to deployed and maintained
 
-适用对象：用 AI 搭出过一份静态 HTML 作品集（含项目卡片、section 分块）、部署在 Vercel / Netlify / Cloudflare Pages、绑定了自定义域名，需要长期增删项目卡 / 改文案 / 调结构。
+适用对象：求职者 / 自由职业者 / 想做个人作品集的人。完整覆盖从「只有一份简历 PDF」到「线上能访问 + 长期维护」的全过程。
 
 ## Why this skill exists
 
-这类项目通常有个**本地源文件 vs 部署仓库分离**的特点：
+这类项目通常有个**本地源文件 vs 部署仓库分离**的特点（Vercel "Import Git Repository" 模式下尤其常见）：
 - 用户在**本地源目录**改 HTML / CSS / JS
-- 平台（Vercel/Netlify/...）监听的是**另一个 GitHub 仓库**，改完要手动同步过去
-- 部分地区开发者直连 GitHub.com 和 *.vercel.app 经常被网络劫持，需要走代理
+- 平台监听的是**另一个 GitHub 仓库**，改完要手动同步过去
+- 部分地区直连 GitHub.com 和 *.vercel.app 经常被网络劫持，需要走代理
 
 新手最容易踩的坑：只改了源文件没同步部署 repo → 推线上的是旧版 → 验证看不到改动 → 怀疑代码出错。
 
-这个 skill 让 Claude 第一次就走完整条链路：**源改 → 同步 → commit → push → 验证**。
+这个 skill 让 Claude 一次走完整条链路：**PDF → 内容结构化 → 选模板 → 填充 → 部署 → 维护**。
+
+## Skill phases 总览
+
+```
+[Phase 1] PDF 解析 + 内容结构化     ← 给 Claude 一份 PDF
+[Phase 2] 选模板（内置 / 外部）
+[Phase 3] 填充模板 → 生成完整 portfolio/
+[Phase 4] 首次部署（GitHub + Vercel + 自定义域名）
+[Phase 5] 长期维护（任何后续改动都走这条）
+[Phase 6] 域名绑定 / 替换（独立任务）
+```
+
+**用户场景 → phase 入口**：
+- 「我有份简历 PDF，做个主页」 → Phase 1
+- 「我已经有主页代码，想推 Vercel」 → Phase 4
+- 「线上主页加张项目卡」 → Phase 5
+- 「我想给现有主页绑个新域名」 → Phase 6
 
 ---
 
-## Step 0 — Project Discovery（首次使用时跑一遍）
+## Phase 1 — PDF 解析 + 内容结构化
+
+**目标**：把简历 PDF 转成符合 `resume.schema.json` 的 `resume.json` 文件。
+
+### 1.1 判断 PDF 类型
+
+```bash
+# 看 PDF 元数据 / 字数（用 Python 的 pdfplumber 或 pdftotext，二选一）
+pdftotext "<RESUME_PDF>" - | wc -w
+# 或
+python3 -c "import pdfplumber; print(sum(len((p.extract_text() or '').split()) for p in pdfplumber.open('<RESUME_PDF>').pages))"
+```
+
+- 字数 ≥ 200 → **文本型 PDF**，pdfplumber / pdftotext 直接抽
+- 字数 < 50 或抽出空 → **扫描件 PDF**（图片），需要 OCR
+
+> 没装 pdfplumber 怎么办？要么 `pip install pdfplumber pypdf`（用户自己装），要么让用户**手动复制简历文本**贴进对话，Claude 直接结构化。
+
+### 1.2 抽文本
+
+**文本型**：
+
+```bash
+python3 -c "
+import pdfplumber
+with pdfplumber.open('<RESUME_PDF>') as pdf:
+    for p in pdf.pages:
+        print(p.extract_text() or '')
+" > /tmp/resume.txt
+```
+
+**扫描件**：让用户用任意 OCR 工具（飞书 OCR / WPS / 在线 OCR 服务）转成 TXT，或者复用 CatCare 的 PaddleOCR + DeepSeek 多路解析栈（如已搭建过）。
+
+### 1.3 用 Claude 把文本结构化为 resume.json
+
+读取 `resume.schema.json`（在 templates repo 的 `_schema/` 下），按 schema 把简历文本归类到字段。**禁止编造**：
+
+- schema 必填字段（basics.name / basics.tagline / experience[]）：必须从 PDF 找到，找不到时停下问用户
+- schema 可选字段（projects.personal[] / methodology / skills）：PDF 没有就**留空数组或不写**，不要编
+
+输出存 `<PROJECT_ROOT>/resume.json`。
+
+⚠️ **校验数据**：把结构化结果**给用户看一眼**（关键字段：姓名、tagline、经历公司数、项目数），让用户确认或修正。比花 1 小时填错强。
+
+---
+
+## Phase 2 — 选模板
+
+### 2.1 内置模板（推荐默认）
+
+skill 默认从 [miao-portfolio-templates](https://github.com/mengzheng001-prog/miao-portfolio-templates) 拉模板。一次 clone 到本地：
+
+```bash
+<PROXY_CMD>      # Step 0.5 探查到的代理；不需要时省略
+git clone https://github.com/mengzheng001-prog/miao-portfolio-templates.git /tmp/miao-portfolio-templates
+```
+
+可选模板（看 `/tmp/miao-portfolio-templates/README.md`）：
+
+| 模板 | 适合 |
+|---|---|
+| `portfolio-pro/` | 多 section 完整作品集（hero + 方法论 + 经历 + 多类项目 + 教育） · 蓝白配色 · 横滑卡片 |
+| `portfolio-minimal/` | 极简单页（v0.4 加入） |
+
+### 2.2 外部模板（高阶用户）
+
+用户也能指定其它 portfolio template repo，只要符合 [resume.schema.json](https://github.com/mengzheng001-prog/miao-portfolio-templates/blob/main/_schema/resume.schema.json) 数据契约：
+
+```bash
+git clone <USER_PROVIDED_TEMPLATE_REPO> /tmp/external-template
+```
+
+> 不符合契约的外部模板（如 HTML5 UP、Bootstrap 模板）也能用，但 Phase 3 填充时 Claude 需要做更多手工映射——告诉用户「这个模板没用 resume.schema 契约，我会按 PDF 内容尽量填，可能漏一些字段」。
+
+### 2.3 拷模板到工作目录
+
+```bash
+cp -r /tmp/miao-portfolio-templates/portfolio-pro/ <PROJECT_ROOT>/site/
+cd <PROJECT_ROOT>/site/
+```
+
+`<PROJECT_ROOT>/site/` 现在是「工作目录」，下面所有改动都在这里。
+
+---
+
+## Phase 3 — 填充模板
+
+### 3.1 读模板的 `_README.md`
+
+每个模板根目录都有 `_README.md`，列了**占位符清单**和**示范数据说明**。**必须先读这个 README**，否则不知道哪些是 `{{占位符}}`、哪些是示范数据要整段替换。
+
+### 3.2 替换 `{{...}}` 占位符（一次性 Edit）
+
+按 `_README.md` 列出的占位符表，把 `{{basics.name}}` / `{{basics.email}}` 等替换为 `resume.json` 里对应字段。同一占位符在多处出现时用 `replace_all`。
+
+### 3.3 替换示范数据 section
+
+模板里以下 section 通常用「示范数据」（jia-yuya-- 真实简历内容脱敏后留作 demo），要**整段重写**：
+
+- `#methodology` → 用 `resume.json.methodology`（无此字段则**整个 section 删掉**）
+- `#about` → 用 `resume.json.skills`
+- `#experience` → 用 `resume.json.experience[]`，时间轴条数按数组长度
+- `#projects` → 用 `resume.json.projects.core[]`
+- `#other-projects` → 用 `resume.json.projects.other[]`（无则删 section）
+- `#personal-projects` → 用 `resume.json.projects.personal[]`（无则删 section）
+- `#education` → 用 `resume.json.education[]`
+
+**规则**：
+1. resume.json 缺某 section → **删掉整个 `<section id="...">`**（不要留空 section）
+2. 数组长度 ≠ 模板示范条数 → 复制 / 删除完整条目 HTML
+3. **不要保留任何 jia-yuya-- 的原始内容**（项目名、公司名、metrics 数字、地名）
+
+### 3.4 替换简历 PDF 链接
+
+```bash
+cp "<RESUME_PDF>" <PROJECT_ROOT>/site/assets/resume.pdf
+```
+
+模板 hero 区有「下载简历 PDF」按钮，指向 `assets/resume.pdf`。
+
+### 3.5 本地预览（可选但推荐）
+
+```bash
+cd <PROJECT_ROOT>/site/
+python3 -m http.server 8000
+# 浏览器打开 http://localhost:8000 检查整体效果
+```
+
+或者直接进 Phase 4 推 Vercel preview。
+
+---
+
+## Phase 4 — 首次部署
+
+### 4.1 在 GitHub 创建部署 repo
+
+```bash
+unset HTTPS_PROXY HTTP_PROXY https_proxy http_proxy
+cd <PROJECT_ROOT>/site/
+git init -b main
+git -c user.email="<EMAIL>" -c user.name="<USERNAME>" add -A
+git -c user.email="<EMAIL>" -c user.name="<USERNAME>" commit -m "init: portfolio site from resume PDF"
+
+# 用 gh CLI 一步创建 public repo + push
+gh repo create <REPO_NAME> --public --source=. --push \
+  --description "Personal portfolio · generated from resume PDF"
+```
+
+如果 `gh auth status` 提示 token 失效，先 `gh auth refresh -h github.com -s repo`（用户在自己终端跑，浏览器走 device flow）。
+
+### 4.2 关联 Vercel
+
+两种路径：
+
+**方式 A · 浏览器**（最快）：
+1. 用户在浏览器打开 https://vercel.com/new
+2. Import Git Repository → 选刚 push 的 repo
+3. Framework Preset = **Other**
+4. Deploy → 1 分钟出 `<PROJECT>.vercel.app` URL
+
+**方式 B · Vercel CLI**：
+```bash
+npm i -g vercel
+vercel login    # 浏览器授权
+cd <PROJECT_ROOT>/site/
+vercel --prod
+```
+
+### 4.3 验证
+
+```bash
+sleep 30
+<PROXY_CMD>      # 部分地区访问 vercel.app 需要代理
+curl -s --max-time 15 -o /dev/null -w "HTTP %{http_code}\n" "https://<PROJECT>.vercel.app/"
+curl -s --max-time 15 "https://<PROJECT>.vercel.app/" | grep -c "<姓名 或 关键字>"
+```
+
+`HTTP 200` + 关键字命中 ≥ 1 → 部署成功。把 URL 发给用户。
+
+### 4.4（可选）绑定自定义域名
+
+跳到下面的 **Phase 6 — 域名绑定**。
+
+---
+
+## Phase 5 — 长期维护（每次后续改动走这条）
+
+> 部署完成后，任何后续改动（加项目、改文案、调结构、加横滑按钮等）都走这条工作流。从 Step 0 开始。
+
+### Step 0 — Project Discovery（首次使用时跑一遍）
 
 ⚠️ **第一次给某个项目用这个 skill 时，先花 2 分钟探查项目结构**。不要假设别人的项目跟示例完全一致。把探查结果**告诉用户并写到对话上下文里**，后续步骤用这些变量替代占位符。
 
@@ -300,7 +507,9 @@ grep -n "<旧文案>" <SOURCE_DIR>/index.html
 1. 把现有 `<div class="<GRID_CLASS>">` 包一层 `<div class="<GRID_CLASS>-frame">`（命名按你项目约定），frame 内加两个 `<button class="grid-nav grid-nav-prev/next">`
 2. **JS 必须用 `querySelectorAll('.<GRID_CLASS>-frame').forEach()`** 遍历所有 frame —— 否则只绑第一个区，第二个区的按钮点不动。这个坑很容易犯（如果项目原本只有一个横排区，原 JS 用 `querySelector` 单数取 grid，加第二个区时必须改为复数 + forEach）
 
-## Vercel 域名绑定（高级）
+---
+
+## Phase 6 — 域名绑定（独立任务）
 
 这步通常只做一次。前提：用户已经在 Vercel 后台关联了 GitHub 部署 repo + 网站能用 `<USERNAME>.vercel.app` 访问。
 
